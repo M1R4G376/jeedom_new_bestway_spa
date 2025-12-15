@@ -13,7 +13,7 @@
   "hasDependency": "1",
   "hasOwnDeamon": "1",
   "maxDependancyInstallTime": "0",
-  "allowRemote": "1"
+  "allowRemote": "1",
   "compatibility": [
 		"smart",
 		"luna",
