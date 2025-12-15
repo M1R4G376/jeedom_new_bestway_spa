@@ -1,15 +1,26 @@
 {
   "id": "new_bestway_spa",
   "name": "Bestway Spa (SmartHub)",
-  "description": "Plugin Jeedom pour piloter un spa Bestway via l'API SmartHub.",
+  "description": {
+    "fr_FR": "Plugin permettant de piloter un spa Bestway via l'API SmartHub."
+  },
   "licence": "AGPL",
   "author": "M1R4G376",
-  "require": "4.0",
+  "require": "4.2",
   "category": "wellness",
   "changelog": "https://example.com/new_bestway_spa/changelog",
   "documentation": "https://example.com/new_bestway_spa/doc",
   "hasDependency": "1",
   "hasOwnDeamon": "1",
   "maxDependancyInstallTime": "0",
-  "allowRemote": "1"
+  "allowRemote": "1",
+  "compatibility": [
+		"smart",
+		"luna",
+		"atlas",
+		"rpi",
+		"docker",
+		"diy",
+		"mobile"
+	]
 }
