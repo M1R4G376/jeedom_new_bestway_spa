@@ -1,0 +1,1 @@
+plugin new bestway spa pour jeedom
