@@ -1,10 +1,13 @@
-plugin new bestway spa pour jeedom
-# Changelog New Bestway Spa
+# Changelog – New Bestway Spa (Jeedom)
 
->**IMPORTANT**
->
->Pour rappel s'il n'y a pas d'information sur la mise à jour, c'est que celle-ci concerne uniquement de la mise à jour de documentation, de traduction ou de texte
+Toutes les modifications notables de ce plugin seront documentées dans ce fichier.
 
-# 16/12/2025
+> **Important**  
+> S’il n’y a pas d’information fonctionnelle pour une version, cela signifie que la mise à jour concerne uniquement la documentation, la traduction ou des ajustements de texte.
 
-- mise à disposition du plugin
+---
+
+## [16/12/2025]
+
+### Ajout
+- Mise à disposition initiale du plugin
