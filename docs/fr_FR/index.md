@@ -1,210 +1,175 @@
-## Bestway Smart Spa
+# Bestway Smart Spa – Jeedom Plugin
 
-Le plugin Bestway Smart Spa pour Jeedom permet de piloter un spa Bestway compatible Smart Hub via l’API cloud officielle Bestway.
+Le plugin **Bestway Smart Spa** pour Jeedom permet de piloter un spa Bestway compatible **Smart Hub** via l’API cloud officielle Bestway.
 
 Il offre le contrôle des principales fonctions du spa (chauffage, filtration, bulles, température) ainsi que la remontée des états et alertes directement dans Jeedom.
 
-⚠️ Ce plugin utilise une API privée Bestway. Son fonctionnement dépend du maintien de cette API.
+> ⚠️ Ce plugin utilise une API privée Bestway. Son fonctionnement dépend du maintien de cette API par le constructeur.
+
 ---
 
-Fonctionnalités
+## Fonctionnalités
 
-Allumage / extinction du spa
+- Allumage / extinction du spa
+- Activation / désactivation :
+  - Chauffage
+  - Filtration
+  - Jets de bulles / vagues
+- Sélection du mode bulles : **OFF / L1 / L2**
+- Réglage de la température cible
+- Lecture des informations :
+  - Température actuelle de l’eau
+  - État de connexion
+  - Codes d’erreur et avertissements
+- Rafraîchissement automatique des états
 
-Activation / désactivation :
+---
 
-Chauffage
+## Prérequis
 
-Filtration
+### Équipement requis
 
-Jets de bulles / vagues
+- Un **PC ou Mac** avec **Charles Proxy** installé  
+  https://www.charlesproxy.com/download/
 
-Sélection du mode bulles : OFF / L1 / L2
+- Deux smartphones (**Android ou iOS**) :
+  - **Téléphone A**
+    - Application *Bestway Smart Hub* installée
+    - Spa déjà associé
+    - Utilisé uniquement pour afficher le QR code
+  - **Téléphone B**
+    - Utilisé pour intercepter le trafic réseau
+    - Le certificat SSL Charles sera installé sur cet appareil
 
-Réglage de la température cible
+> ⚠️ Sur le téléphone B, vous devez impérativement utiliser une **ancienne version de l’application** :  
+> **Bestway Connect 1.0.4**, téléchargeable depuis **APKPure**, afin de pouvoir intercepter le trafic réseau.
 
-Lecture :
+### Réseau
 
-Température actuelle de l’eau
+- Le PC et les deux smartphones doivent être connectés au **même réseau Wi-Fi**
 
-État de connexion
+---
 
-Codes d’erreur et avertissements
+## Récupération des identifiants Bestway
 
-Rafraîchissement automatique des états
+Ces étapes sont nécessaires **une seule fois** pour obtenir les identifiants requis par le plugin.
 
-# Prérequis
-Équipement requis
+---
 
-Un PC ou Mac avec Charles Proxy installé
-https://www.charlesproxy.com/download/
+### Étape 1 – Configuration de Charles Proxy
 
-Deux smartphones (Android ou iOS) :
+1. Lancez **Charles Proxy** sur votre PC
+2. Allez dans `Proxy > Proxy Settings`
+3. Notez le port HTTP (par défaut : `8888`)
+4. Allez dans  
+   `Help > SSL Proxying > Install Charles Root Certificate`  
+   et installez le certificat sur votre PC
 
-Téléphone A
+---
 
-Application Bestway Smart Hub installée
+### Étape 2 – Configuration du téléphone B
 
-Spa déjà associé
+#### A. Configurer le proxy Wi-Fi
 
-Sert uniquement à afficher le QR code
+1. Sur le téléphone B, ouvrez les paramètres Wi-Fi
+2. Appui long sur le réseau connecté → **Modifier**
+3. Ouvrez **Options avancées**
+4. Réglez le proxy sur **Manuel**
+   - **Hôte** : adresse IP de votre PC
+   - **Port** : `8888`
 
-Téléphone B
+---
 
-Utilisé pour intercepter le trafic réseau
+#### B. Installer le certificat SSL Charles
 
-Le certificat SSL Charles sera installé sur cet appareil
+> Indispensable pour déchiffrer le trafic HTTPS
 
-⚠️ Sur le téléphone B, vous devez impérativement utiliser une ancienne version de l’application :
-Bestway Connect 1.0.4, téléchargeable depuis APKPure, afin de pouvoir intercepter le trafic réseau.
+##### Android (selon version)
 
-# Réseau
+1. Ouvrez : http://charlesproxy.com/getssl
+2. Téléchargez le certificat
+3. Installez-le via :  
+   `Paramètres > Sécurité > Chiffrement et identifiants > Installer depuis le stockage`
 
-. Le PC et les deux smartphones doivent être connectés au même réseau Wi-Fi
+##### iOS
 
+1. Ouvrez Safari : https://chls.pro/ssl
+2. Acceptez et installez le profil
+3. Allez dans :  
+   `Réglages > Général > VPN et gestion des appareils > Charles Proxy CA`
+4. Activez la confiance dans :  
+   `Réglages > Général > Informations > Réglages de confiance des certificats`
 
-Récupération des identifiants Bestway
+---
 
-Ces étapes sont nécessaires une seule fois pour obtenir les identifiants requis par le plugin.
+### Étape 3 – Activer le proxy SSL dans Charles
 
-Étape 1 – Configuration de Charles Proxy
+Dans **Charles Proxy** :
 
-Lancez Charles Proxy sur votre PC
+1. Allez dans `Proxy > SSL Proxying Settings`
+2. Cliquez sur **Add**
+3. Configurez :
+   - **Host** : `*`
+   - **Port** : `443`
 
-Allez dans Proxy > Proxy Settings
+---
 
-Notez le port HTTP (par défaut : 8888)
+### Étape 4 – Capture des données
 
-Allez dans
-Help > SSL Proxying > Install Charles Root Certificate
-et installez le certificat sur votre PC
+> ⚠️ Respectez impérativement l’ordre des étapes
 
-Étape 2 – Configuration du téléphone B
-A. Configurer le proxy Wi-Fi
+1. Démarrez l’enregistrement dans Charles (bouton **●**)
+2. Installez l’application **Bestway Smart Hub** sur le téléphone B
+3. Ouvrez l’application
+4. Sélectionnez la région **Royaume-Uni**
+5. Scannez le QR code affiché sur le téléphone A
+6. Surveillez les requêtes vers :
+   - `thing_shadow`
+   - `command`
+   - `api.bestwaycorp`
 
-Sur le téléphone B, ouvrez les paramètres Wi-Fi
+---
 
-Appui long sur le réseau connecté → Modifier
+### Étape 5 – Récupération des identifiants
 
-Ouvrez Options avancées
-
-Proxy : Manuel
-
-Hôte : adresse IP de votre PC
-
-Port : 8888
-
-B. Installer le certificat SSL Charles
-
-Indispensable pour déchiffrer le trafic HTTPS
-
-Android (à confirmer selon version)
-
-Ouvrez :
-http://charlesproxy.com/getssl
-
-Téléchargez le certificat
-
-Installez-le via :
-Paramètres > Sécurité > Chiffrement et identifiants > Installer depuis le stockage
-
-iOS
-
-Ouvrez Safari :
-https://chls.pro/ssl
-
-Acceptez et installez le profil
-
-Allez dans :
-Réglages > Général > VPN et gestion des appareils > Charles Proxy CA
-
-Activez la confiance dans :
-Réglages > Général > Informations > Réglages de confiance des certificats
-
-Étape 3 – Activer le proxy SSL dans Charles
-
-Dans Charles Proxy :
-
-Allez dans Proxy > SSL Proxying Settings
-
-Cliquez sur Add
-
-Configurez :
-
-Host : *
-
-Port : 443
-
-Étape 4 – Capture des données
-
-⚠️ Respectez impérativement l’ordre des étapes
-
-Démarrez l’enregistrement dans Charles (bouton ●)
-
-Installez l’application Bestway Smart Hub sur le téléphone B
-
-Ouvrez l’application
-
-Sélectionnez la région Royaume-Uni
-
-Scannez le QR code affiché sur le téléphone A
-
-Surveillez les requêtes vers :
-
-thing_shadow
-
-command
-
-api.bestwaycorp
-
-Étape 5 – Récupération des identifiants
-
-Recherchez une requête POST vers :
-
-/enduser/visitor
-
-
+1. Recherchez une requête **POST** vers :
+    /enduser/visitor
 Domaine :
-
 https://smarthub-eu.bestwaycorp.com
 
 
-Ouvrez la requête et consultez :
+2. Ouvrez la requête et consultez :
+- `Request > JSON`
+- ou `Request > Text`
 
-Request > JSON
+#### Identifiants à récupérer
 
-ou Request > Text
+- `visitor_id`
+- `registration_id`
+- `device_id`
+- `product_id`
+- `client_id` (Android uniquement ; si non trouvé, laisser vide)
 
-Identifiants à récupérer
+#### Informations complémentaires
 
-visitor_id
+- `registration_id` et `client_id` :  
+`/api/enduser/visitor`
+- `device_id` et `product_id` :  
+`/api/enduser/home/room/devices`
 
-registration_id
+---
 
-device_id
+## Nettoyage
 
-product_id
+- Désactiver le proxy Wi-Fi sur le téléphone B
+- Supprimer le certificat SSL Charles s’il n’est plus nécessaire
 
-client_id (Android uniquement)
+---
 
-Informations complémentaires
+## Avertissement
 
-registration_id et client_id :
-/api/enduser/visitor
+Ce plugin est développé par la **communauté Jeedom**.  
+Il **n’est ni affilié, ni soutenu par Bestway**.
 
-device_id et product_id :
-/api/enduser/home/room/devices
-
-Nettoyage
-
-Désactiver le proxy Wi-Fi sur le téléphone B
-
-Supprimer le certificat SSL Charles si non nécessaire
-
-Avertissement
-
-Ce plugin est développé par la communauté Jeedom.
-Il n’est ni affilié, ni soutenu par Bestway.
-
-L’utilisation se fait à vos risques et périls.
+L’utilisation se fait **à vos risques et périls**.  
 L’API utilisée étant privée, son fonctionnement peut évoluer ou cesser sans préavis.
