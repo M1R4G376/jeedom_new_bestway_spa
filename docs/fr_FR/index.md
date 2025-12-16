@@ -1,63 +1,107 @@
 ## Bestway Smart Spa
 
-This Home Assistant integration allows you to control your Bestway SmartHub-enabled spa via the Bestway cloud API.
+Le plugin Bestway Smart Spa pour Jeedom permet de piloter un spa Bestway compatible Smart Hub via l’API cloud officielle Bestway.
 
+Il offre le contrôle des principales fonctions du spa (chauffage, filtration, bulles, température) ainsi que la remontée des états et alertes directement dans Jeedom.
+
+⚠️ Ce plugin utilise une API privée Bestway. Son fonctionnement dépend du maintien de cette API.
 ---
 
-## Installation
+Fonctionnalités
 
-1. Copy the `new_bestway_spa/` folder into `custom_components/` in your Home Assistant configuration directory.
-2. Restart Home Assistant.
-3. Go to **Settings > Devices & Services** and click **Add Integration**.
-4. Search for **Bestway Spa** and follow the configuration flow.
+Allumage / extinction du spa
 
----
+Activation / désactivation :
 
-Prérequis
+Chauffage
+
+Filtration
+
+Jets de bulles / vagues
+
+Sélection du mode bulles : OFF / L1 / L2
+
+Réglage de la température cible
+
+Lecture :
+
+Température actuelle de l’eau
+
+État de connexion
+
+Codes d’erreur et avertissements
+
+Rafraîchissement automatique des états
+
+# Prérequis
 Équipement requis
 
-Un PC ou Mac avec Charles Proxy
- installé
+Un PC ou Mac avec Charles Proxy installé
+https://www.charlesproxy.com/download/
 
 Deux smartphones (Android ou iOS) :
 
-Téléphone A : avec l’application Bestway Smart Hub installée et déjà connectée au spa (utilisé pour partager le QR code)
+Téléphone A
 
-Téléphone B : utilisé pour capturer le trafic via Charles Proxy (le certificat SSL sera installé sur cet appareil)
+Application Bestway Smart Hub installée
 
-Sur le téléphone B, vous devez utiliser une version plus ancienne de l’application (Bestway Connect 1.0.4), téléchargeable depuis APKPURE, afin de pouvoir intercepter le trafic réseau.
-Réseau
+Spa déjà associé
 
-Le PC et les deux smartphones doivent être connectés au même réseau Wi-Fi
+Sert uniquement à afficher le QR code
+
+Téléphone B
+
+Utilisé pour intercepter le trafic réseau
+
+Le certificat SSL Charles sera installé sur cet appareil
+
+⚠️ Sur le téléphone B, vous devez impérativement utiliser une ancienne version de l’application :
+Bestway Connect 1.0.4, téléchargeable depuis APKPure, afin de pouvoir intercepter le trafic réseau.
+
+# Réseau
+
+. Le PC et les deux smartphones doivent être connectés au même réseau Wi-Fi
+
+
+Récupération des identifiants Bestway
+
+Ces étapes sont nécessaires une seule fois pour obtenir les identifiants requis par le plugin.
 
 Étape 1 – Configuration de Charles Proxy
 
 Lancez Charles Proxy sur votre PC
 
-Allez dans Proxy > Proxy Settings et notez le port HTTP (par défaut : 8888)
+Allez dans Proxy > Proxy Settings
 
-Allez dans Help > SSL Proxying > Install Charles Root Certificate (installez-le sur votre PC)
+Notez le port HTTP (par défaut : 8888)
+
+Allez dans
+Help > SSL Proxying > Install Charles Root Certificate
+et installez le certificat sur votre PC
 
 Étape 2 – Configuration du téléphone B
 A. Configurer le proxy Wi-Fi
 
 Sur le téléphone B, ouvrez les paramètres Wi-Fi
 
-Appui long sur le réseau connecté > Modifier > Options avancées
+Appui long sur le réseau connecté → Modifier
 
-Réglez le proxy sur Manuel :
+Ouvrez Options avancées
 
-Hôte du proxy : adresse IP de votre PC
+Proxy : Manuel
+
+Hôte : adresse IP de votre PC
 
 Port : 8888
 
-B. Installer le certificat SSL
+B. Installer le certificat SSL Charles
 
-Nécessaire pour déchiffrer le trafic HTTPS
+Indispensable pour déchiffrer le trafic HTTPS
 
-Android (à confirmer)
+Android (à confirmer selon version)
 
-Ouvrez http://charlesproxy.com/getssl sur le téléphone B
+Ouvrez :
+http://charlesproxy.com/getssl
 
 Téléchargez le certificat
 
@@ -66,19 +110,20 @@ Paramètres > Sécurité > Chiffrement et identifiants > Installer depuis le sto
 
 iOS
 
-Ouvrez Safari : https://chls.pro/ssl
+Ouvrez Safari :
+https://chls.pro/ssl
 
 Acceptez et installez le profil
 
 Allez dans :
 Réglages > Général > VPN et gestion des appareils > Charles Proxy CA
 
-Activez-le dans :
+Activez la confiance dans :
 Réglages > Général > Informations > Réglages de confiance des certificats
 
-Étape 3 – Activer le proxy SSL
+Étape 3 – Activer le proxy SSL dans Charles
 
-Dans Charles :
+Dans Charles Proxy :
 
 Allez dans Proxy > SSL Proxying Settings
 
@@ -86,88 +131,80 @@ Cliquez sur Add
 
 Configurez :
 
-Hôte : *
+Host : *
 
 Port : 443
 
 Étape 4 – Capture des données
-⚠️ Il est important de suivre ces étapes dans cet ordre afin de récupérer tous les identifiants nécessaires.
+
+⚠️ Respectez impérativement l’ordre des étapes
 
 Démarrez l’enregistrement dans Charles (bouton ●)
 
 Installez l’application Bestway Smart Hub sur le téléphone B
 
-Ouvrez Bestway Smart Hub
+Ouvrez l’application
 
-Sélectionnez la région Royaume-Uni et scannez le QR code
+Sélectionnez la région Royaume-Uni
 
-Surveillez les requêtes telles que thing_shadow, command ou celles vers api.bestwaycorp
+Scannez le QR code affiché sur le téléphone A
+
+Surveillez les requêtes vers :
+
+thing_shadow
+
+command
+
+api.bestwaycorp
 
 Étape 5 – Récupération des identifiants
 
-Recherchez une requête POST vers /enduser/visitor :
+Recherchez une requête POST vers :
+
+/enduser/visitor
+
+
+Domaine :
 
 https://smarthub-eu.bestwaycorp.com
 
-Ouvrez-la et consultez Request > JSON ou Text
 
-Identifiants utiles à extraire :
+Ouvrez la requête et consultez :
+
+Request > JSON
+
+ou Request > Text
+
+Identifiants à récupérer
 
 visitor_id
 
-client_id (pour Android)
+registration_id
 
 device_id
 
 product_id
 
-Informations supplémentaires :
+client_id (Android uniquement)
 
-registration_id et client_id peuvent être trouvés dans /api/enduser/visitor
+Informations complémentaires
 
-device_id et product_id peuvent se trouver dans /api/enduser/home/room/devices
+registration_id et client_id :
+/api/enduser/visitor
+
+device_id et product_id :
+/api/enduser/home/room/devices
 
 Nettoyage
 
-Désactiver le proxy sur le téléphone B
+Désactiver le proxy Wi-Fi sur le téléphone B
 
-Supprimer le certificat SSL Charles s’il n’est plus nécessaire
+Supprimer le certificat SSL Charles si non nécessaire
 
----
+Avertissement
 
-## Configuration Options
+Ce plugin est développé par la communauté Jeedom.
+Il n’est ni affilié, ni soutenu par Bestway.
 
-| Field            | Required | Notes                                      |
-|------------------|----------|--------------------------------------------|
-| `device_name`    | ✅       | Display name in Home Assistant             |
-| `visitor_id`     | ✅       | From intercepted app traffic               |
-| `registration_id`| ✅       | Same as above                              |
-| `client_id`      | ❌       | Only for Android (`push_type = fcm`)       |
-| `device_id`      | ✅       | Needed to control the spa                  |
-| `product_id`     | ✅       | Needed to control the spa                  |
-| `push_type`      | ❌       | `fcm` (Android) or `apns` (iOS), default `fcm` |
-
----
-
-## API Notes
-
-- `filter_state` returns `2` when active, `0` when off — the integration handles this automatically.
-- `select` gives the possibility to choose  the bubble/wave mode OFF/L1/L2 (not available from the official app)
-- To **turn on** any feature, the integration sends `1`. To **turn off**, it sends `0`.
-- All values are polled from `/api/device/thing_shadow/`
-
----
-
-## Features
-
-- Toggle spa power, filter, heater, and wave jets
-- Adjust water target temperature
-- View current water temperature
-- Monitor connection status, warnings, and error codes
-
----
-
-
-## Disclaimer
-This is a community-made integration. It is not affiliated with or endorsed by Bestway.
-Use at your own risk — the code interacts with a private API which may change.
+L’utilisation se fait à vos risques et périls.
+L’API utilisée étant privée, son fonctionnement peut évoluer ou cesser sans préavis.
