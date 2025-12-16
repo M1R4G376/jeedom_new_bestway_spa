@@ -8,19 +8,17 @@
   "author": "M1R4G376",
   "require": "4.2",
   "category": "wellness",
-  "changelog": "https://example.com/new_bestway_spa/changelog",
-  "documentation": "https://example.com/new_bestway_spa/doc",
+  "changelog": "https://m1r4g376.github.io/jeedom_new_bestway_spa/#language#/changelog.md",
+  "changelog_beta": "https://m1r4g376.github.io/jeedom_new_bestway_spa/#language#/changelog.md",
+  "documentation": "https://m1r4g376.github.io/jeedom_new_bestway_spa/#language#/",
+  "documentation_beta": "https://m1r4g376.github.io/jeedom_new_bestway_spa/#language#/",
   "hasDependency": "1",
   "hasOwnDeamon": "1",
   "maxDependancyInstallTime": "0",
   "allowRemote": "1",
   "compatibility": [
-		"smart",
-		"luna",
-		"atlas",
 		"rpi",
 		"docker",
-		"diy",
-		"mobile"
+		"diy"
 	]
 }
