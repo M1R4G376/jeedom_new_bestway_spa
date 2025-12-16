@@ -1,8 +1,3 @@
----
-layout: default
-title: Changelog
----
-
 # Changelog – New Bestway Spa (Jeedom)
 
 Toutes les modifications notables de ce plugin seront documentées dans ce fichier.
