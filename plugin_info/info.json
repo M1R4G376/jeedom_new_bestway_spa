@@ -17,12 +17,8 @@
   "maxDependancyInstallTime": "0",
   "allowRemote": "1",
   "compatibility": [
-		"smart",
-		"luna",
-		"atlas",
 		"rpi",
 		"docker",
-		"diy",
-		"mobile"
+		"diy"
 	]
 }
