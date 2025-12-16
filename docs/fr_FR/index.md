@@ -1,6 +1,6 @@
 # Bestway Smart Spa – Jeedom Plugin
 
-Le plugin **Bestway Smart Spa** pour Jeedom permet de piloter un spa Bestway compatible **Smart Hub** via l’API cloud officielle Bestway.
+Le plugin permet de piloter un spa Bestway compatible **Smart Hub** via l’API cloud officielle Bestway.
 
 Il offre le contrôle des principales fonctions du spa (chauffage, filtration, bulles, température) ainsi que la remontée des états et alertes directement dans Jeedom.
 
@@ -30,7 +30,7 @@ Il offre le contrôle des principales fonctions du spa (chauffage, filtration, b
 ### Équipement requis
 
 - Un **PC ou Mac** avec **Charles Proxy** installé  
-  https://www.charlesproxy.com/download/
+  [Télécharger Charles Proxy](https://www.charlesproxy.com/download/)
 
 - Deux smartphones (**Android ou iOS**) :
   - **Téléphone A**
@@ -86,14 +86,14 @@ Ces étapes sont nécessaires **une seule fois** pour obtenir les identifiants r
 
 ##### Android (selon version)
 
-1. Ouvrez : http://charlesproxy.com/getssl
+1. Ouvrez : [http://charlesproxy.com/getssl](http://charlesproxy.com/getssl)
 2. Téléchargez le certificat
 3. Installez-le via :  
    `Paramètres > Sécurité > Chiffrement et identifiants > Installer depuis le stockage`
 
 ##### iOS
 
-1. Ouvrez Safari : https://chls.pro/ssl
+1. Ouvrez Safari : [https://chls.pro/ssl](https://chls.pro/ssl)
 2. Acceptez et installez le profil
 3. Allez dans :  
    `Réglages > Général > VPN et gestion des appareils > Charles Proxy CA`
@@ -168,8 +168,7 @@ https://smarthub-eu.bestwaycorp.com
 
 ## Avertissement
 
-Ce plugin est développé par la **communauté Jeedom**.  
-Il **n’est ni affilié, ni soutenu par Bestway**.
+Ce plugin **n’est ni affilié, ni soutenu par Bestway**.
 
 L’utilisation se fait **à vos risques et périls**.  
 L’API utilisée étant privée, son fonctionnement peut évoluer ou cesser sans préavis.
