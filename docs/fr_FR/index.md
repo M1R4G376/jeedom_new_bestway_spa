@@ -1,4 +1,4 @@
-# Bestway Smart Spa – Jeedom Plugin
+# Bestway Smart Spa
 
 Le plugin permet de piloter un spa Bestway compatible **Smart Hub** via l’API cloud officielle Bestway.
 
