@@ -25,7 +25,7 @@ class new_bestway_spa extends eqLogic {
 
     public static function dependancy_install() {
         return array(
-            'script' => dirname(__FILE__) . '/../../resources/install_venv.sh',
+            'script' => 'bash ' . dirname(__FILE__) . '/../../resources/install_venv.sh',
             'log'    => 'new_bestway_spa_dep'
         );
     }
