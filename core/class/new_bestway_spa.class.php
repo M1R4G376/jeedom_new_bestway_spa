@@ -16,28 +16,18 @@ class new_bestway_spa extends eqLogic {
     public static function dependancy_info() {
         $return = array();
         $return['log'] = 'new_bestway_spa_dep';
-        $return['state'] = 'ok';
 
-        log::add('new_bestway_spa', 'debug', '[dependancy_info] Vérification des dépendances Python (python3)...');
-
-        if (trim(shell_exec('which python3')) == '') {
-            log::add('new_bestway_spa', 'warning', '[dependancy_info] python3 introuvable sur le système.');
-            $return['state'] = 'nok';
-        } else {
-            log::add('new_bestway_spa', 'debug', '[dependancy_info] python3 trouvé.');
-        }
+        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
+        $return['state'] = file_exists($venvPy) ? 'ok' : 'nok';
 
         return $return;
     }
 
     public static function dependancy_install() {
-        log::add('new_bestway_spa', 'info', '[dependancy_install] Installation / mise à jour des dépendances Python (requests, aiohttp)...');
-
-        $logFile = log::getPathToLog('new_bestway_spa_dep');
-        $cmd = 'sudo -u www-data python3 -m pip install --upgrade requests aiohttp > ' . $logFile . ' 2>&1 &';
-
-        log::add('new_bestway_spa', 'info', '[dependancy_install] Commande lancée : ' . $cmd);
-        exec($cmd);
+        return array(
+            'script' => dirname(__FILE__) . '/../../resources/install_venv.sh',
+            'log'    => 'new_bestway_spa_dep'
+        );
     }
 
     /* ============================================================
@@ -50,12 +40,15 @@ class new_bestway_spa extends eqLogic {
         $return['launchable'] = 'ok';
         $return['state'] = 'nok';
 
-        log::add('new_bestway_spa', 'debug', '[deamon_info] Vérification état du démon...');
+        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
+        if (!file_exists($venvPy)) {
+            $return['launchable'] = 'nok';
+            return $return;
+        }
 
-        $pid = trim(shell_exec("ps aux | grep new_bestway_spa_daemon.py | grep -v grep | awk '{print \$2}'"));
-        log::add('new_bestway_spa', 'debug', '[deamon_info] PID détecté: ' . $pid);
-
-        if ($pid != '') {
+        // Vérifie si un process du démon tourne
+        $pid = trim(shell_exec("pgrep -f 'new_bestway_spa_daemon.py' | head -n 1"));
+        if ($pid !== '') {
             $return['state'] = 'ok';
         }
 
@@ -68,6 +61,11 @@ class new_bestway_spa extends eqLogic {
         // On arrête d’abord le démon existant le cas échéant
         self::deamon_stop();
 
+        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
+        if (!file_exists($venvPy)) {
+            throw new Exception("Venv introuvable: $venvPy. Installez d'abord les dépendances du plugin.");
+        }
+
         // Paramètres SmartHub obligatoires
         $required = array(
             'visitor_id',
@@ -78,18 +76,17 @@ class new_bestway_spa extends eqLogic {
 
         foreach ($required as $key) {
             $value = config::byKey($key, 'new_bestway_spa');
-            log::add('new_bestway_spa', 'debug', "[deamon_start] Vérif paramètre '$key' = \"" . $value . '"');
             if ($value === '' || $value === null) {
                 throw new Exception("Paramètre obligatoire manquant ou vide : $key");
             }
         }
 
         $apikey = jeedom::getApiKey('new_bestway_spa');
+
         $ip = config::byKey('internalAddr');
         if ($ip == '' || $ip === null) {
             $ip = '127.0.0.1';
         }
-        log::add('new_bestway_spa', 'debug', '[deamon_start] IP Jeedom utilisée : ' . $ip);
 
         $refresh         = config::byKey('refresh_interval', 'new_bestway_spa', 30);
         $api_host        = config::byKey('api_host', 'new_bestway_spa', 'smarthub-eu.bestwaycorp.com');
@@ -103,14 +100,12 @@ class new_bestway_spa extends eqLogic {
         $timezone        = config::byKey('timezone', 'new_bestway_spa', 'GMT');
 
         $daemonPath = realpath(dirname(__FILE__) . '/../../resources/new_bestway_spa_daemon.py');
-        log::add('new_bestway_spa', 'debug', '[deamon_start] Chemin daemon = ' . $daemonPath);
-
         if ($daemonPath === false || !file_exists($daemonPath)) {
             throw new Exception("Script daemon introuvable : " . dirname(__FILE__) . '/../../resources/new_bestway_spa_daemon.py');
         }
 
         // Construction de la commande de lancement
-        $cmd  = 'nohup python3 ' . $daemonPath;
+        $cmd  = 'nohup ' . escapeshellcmd($venvPy) . ' ' . escapeshellarg($daemonPath);
         $cmd .= ' --apikey ' . escapeshellarg($apikey);
         $cmd .= ' --jeedom_ip ' . escapeshellarg($ip);
         $cmd .= ' --refresh ' . intval($refresh);
@@ -127,14 +122,17 @@ class new_bestway_spa extends eqLogic {
         $cmd .= ' --timezone ' . escapeshellarg($timezone);
         $cmd .= ' >> ' . log::getPathToLog('new_bestway_spa') . ' 2>&1 &';
 
-        log::add('new_bestway_spa', 'info', '[deamon_start] CMD LANCÉ : ' . $cmd);
+        // Log “safe” (masque l'apikey)
+        $cmdSafe = str_replace(escapeshellarg($apikey), "'***'", $cmd);
+        log::add('new_bestway_spa', 'info', '[deamon_start] CMD LANCÉ : ' . $cmdSafe);
+
         exec($cmd);
 
         // On laisse un peu de temps au démon pour démarrer
         sleep(1);
         $info = self::deamon_info();
         if ($info['state'] != 'ok') {
-            log::add('new_bestway_spa', 'warning', '[deamon_start] Le démon semble ne pas être démarré (state != ok).');
+            log::add('new_bestway_spa', 'warning', '[deamon_start] Le démon semble ne pas être démarré (state != ok). Vérifiez les logs.');
         }
 
         return true;
@@ -143,10 +141,8 @@ class new_bestway_spa extends eqLogic {
     public static function deamon_stop() {
         log::add('new_bestway_spa', 'info', '[deamon_stop] Arrêt du démon...');
 
-        // Récupération éventuelle du PID
-        $pidList = trim(shell_exec("ps aux | grep new_bestway_spa_daemon.py | grep -v grep | awk '{print \$2}'"));
-
-        if ($pidList == '') {
+        $pidList = trim(shell_exec("pgrep -f 'new_bestway_spa_daemon.py'"));
+        if ($pidList === '') {
             log::add('new_bestway_spa', 'debug', '[deamon_stop] Aucun PID détecté pour new_bestway_spa_daemon.py');
             return;
         }
@@ -154,7 +150,7 @@ class new_bestway_spa extends eqLogic {
         $pids = explode("\n", $pidList);
         foreach ($pids as $pid) {
             $pid = trim($pid);
-            if ($pid == '') {
+            if ($pid === '') {
                 continue;
             }
             log::add('new_bestway_spa', 'info', '[deamon_stop] kill PID ' . $pid);
@@ -191,155 +187,128 @@ class new_bestway_spa extends eqLogic {
      *  COMMANDES PAR DÉFAUT (création + réparation)
      * ============================================================ */
 
-	public function createDefaultCommands() {
-	    log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Création / réparation des commandes pour eqLogic #' . $this->getId());
+    public function createDefaultCommands() {
+        log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Création / réparation des commandes pour eqLogic #' . $this->getId());
 
-    // Liste des sous-types valides
-	    $validInfoSubTypes = array('string', 'numeric', 'binary');
-	    $validActionSubTypes = array('other', 'slider', 'color', 'message', 'select');
+        // Liste des sous-types valides
+        $validInfoSubTypes = array('string', 'numeric', 'binary');
+        $validActionSubTypes = array('other', 'slider', 'color', 'message', 'select');
 
-    // --- COMMANDES INFO ---
-	    $infos = array(
-	        'wifi_version'        => array('Version WiFi',         'numeric', '',   0),
-	        'ota_status'          => array('Statut OTA',           'numeric', '',   0),
-	        'mcu_version'         => array('Version MCU',          'string',  '',   0),
-	        'trd_version'         => array('Version TRD',          'string',  '',   0),
-	        'connect_type'        => array('Type connexion',       'string',  '',   0),
-	        'power_state'         => array('Alimentation',         'binary',  '',   1),
-	        'heater_state'        => array('Chauffage',            'binary',  '',   1),
-	        'wave_state'          => array('Bulles',               'binary',  '',   1),
-	        'filter_state'        => array('Filtration',           'binary',  '',   1),
-	        'temperature_setting' => array('Température cible',    'numeric', '°C', 1),
-	        'temperature_unit'    => array('Unité température',    'numeric', '',   0),
-	        'water_temperature'   => array('Température eau',      'numeric', '°C', 1),
-	        'warning'             => array('Avertissement',        'string',  '',   0),
-	        'error_code'          => array('Code erreur',          'string',  '',   0),
-	        'hydrojet_state'      => array('Hydrojet',             'binary',  '',   1),
-	        'is_online'           => array('En ligne',             'binary',  '',   0),
-	    );
-	
-	    foreach ($infos as $logicalId => $config) {
-	        list($name, $subtype, $unit, $historize) = $config;
+        // --- COMMANDES INFO ---
+        $infos = array(
+            'wifi_version'        => array('Version WiFi',         'numeric', '',   0),
+            'ota_status'          => array('Statut OTA',           'numeric', '',   0),
+            'mcu_version'         => array('Version MCU',          'string',  '',   0),
+            'trd_version'         => array('Version TRD',          'string',  '',   0),
+            'connect_type'        => array('Type connexion',       'string',  '',   0),
+            'power_state'         => array('Alimentation',         'binary',  '',   1),
+            'heater_state'        => array('Chauffage',            'binary',  '',   1),
+            'wave_state'          => array('Bulles',               'binary',  '',   1),
+            'filter_state'        => array('Filtration',           'binary',  '',   1),
+            'temperature_setting' => array('Température cible',    'numeric', '°C', 1),
+            'temperature_unit'    => array('Unité température',    'numeric', '',   0),
+            'water_temperature'   => array('Température eau',      'numeric', '°C', 1),
+            'warning'             => array('Avertissement',        'string',  '',   0),
+            'error_code'          => array('Code erreur',          'string',  '',   0),
+            'hydrojet_state'      => array('Hydrojet',             'binary',  '',   1),
+            'is_online'           => array('En ligne',             'binary',  '',   0),
+        );
 
-	        $cmd = $this->getCmd(null, $logicalId);
+        foreach ($infos as $logicalId => $config) {
+            list($name, $subtype, $unit, $historize) = $config;
 
-	        if (!is_object($cmd)) {
-	            $cmd = new new_bestway_spaCmd();
-	            $cmd->setEqLogic_id($this->getId());
-	            $cmd->setLogicalId($logicalId);
-	            log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Info '$logicalId' créée.");
-	        } else {
-	            log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Info '$logicalId' existante, vérification.");
-	        }
+            $cmd = $this->getCmd(null, $logicalId);
 
-        // Validation du subtype
-	        if (!in_array($subtype, $validInfoSubTypes)) {
-	            log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour info '$logicalId'. Défini par défaut à 'string'");
-	            $subtype = 'string';
-	        }
+            if (!is_object($cmd)) {
+                $cmd = new new_bestway_spaCmd();
+                $cmd->setEqLogic_id($this->getId());
+                $cmd->setLogicalId($logicalId);
+                log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Info '$logicalId' créée.");
+            }
 
-	        $cmd->setName($name);
-	        $cmd->setType('info');
-	        $cmd->setSubType($subtype);
-	        $cmd->setIsHistorized($historize ? 1 : 0);
-	        $cmd->setUnite($unit != '' ? $unit : '');
+            if (!in_array($subtype, $validInfoSubTypes)) {
+                log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour info '$logicalId'. Défini par défaut à 'string'");
+                $subtype = 'string';
+            }
 
-	        $cmd->save();
-	    }
+            $cmd->setName($name);
+            $cmd->setType('info');
+            $cmd->setSubType($subtype);
+            $cmd->setIsHistorized($historize ? 1 : 0);
+            $cmd->setUnite($unit != '' ? $unit : '');
+            $cmd->save();
+        }
 
-    // --- COMMANDES ACTION ---
-	    $actions = array(
-	        'set_power'     => array('Alimentation ON/OFF', 'other',  ''),
-	        'set_heating'   => array('Activer chauffage',   'other',  ''),
-	        'set_filtering' => array('Activer filtration',  'other',  ''),
-	        'set_hydrojet'  => array('Activer hydrojet',    'other',  ''),
-	        'bubble_mode'   => array('Mode bulles',         'select', '0|Off;1|L1;2|L2'),
-	    );
+        // --- COMMANDES ACTION ---
+        $actions = array(
+            'set_power'     => array('Alimentation ON/OFF', 'other',  ''),
+            'set_heating'   => array('Activer chauffage',   'other',  ''),
+            'set_filtering' => array('Activer filtration',  'other',  ''),
+            'set_hydrojet'  => array('Activer hydrojet',    'other',  ''),
+            'bubble_mode'   => array('Mode bulles',         'select', '0|Off;1|L1;2|L2'),
+        );
 
-	    foreach ($actions as $logicalId => $config) {
-	        list($name, $subtype, $listValue) = $config;
+        foreach ($actions as $logicalId => $config) {
+            list($name, $subtype, $listValue) = $config;
 
-	        $cmd = $this->getCmd(null, $logicalId);
+            $cmd = $this->getCmd(null, $logicalId);
 
-	        if (!is_object($cmd)) {
-	            $cmd = new new_bestway_spaCmd();
-	            $cmd->setEqLogic_id($this->getId());
-	            $cmd->setLogicalId($logicalId);
-	            log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Action '$logicalId' créée.");
-	        } else {
-	            log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Action '$logicalId' existante, vérification.");
-	        }
+            if (!is_object($cmd)) {
+                $cmd = new new_bestway_spaCmd();
+                $cmd->setEqLogic_id($this->getId());
+                $cmd->setLogicalId($logicalId);
+                log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Action '$logicalId' créée.");
+            }
 
-        // Validation du subtype
-	        if (!in_array($subtype, $validActionSubTypes)) {
-	            log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour action '$logicalId'. Défini par défaut à 'other'");
-	            $subtype = 'other';
-	        }
+            if (!in_array($subtype, $validActionSubTypes)) {
+                log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour action '$logicalId'. Défini par défaut à 'other'");
+                $subtype = 'other';
+            }
 
-	        $cmd->setName($name);
-	        $cmd->setType('action');
-	        $cmd->setSubType($subtype);
+            $cmd->setName($name);
+            $cmd->setType('action');
+            $cmd->setSubType($subtype);
 
-	        if ($subtype == 'select' && $listValue != '') {
-	            $cmd->setConfiguration('listValue', $listValue);
-	        } else {
-	            $cmd->setConfiguration('listValue', '');
-	        }
+            if ($subtype == 'select' && $listValue != '') {
+                $cmd->setConfiguration('listValue', $listValue);
+            } else {
+                $cmd->setConfiguration('listValue', '');
+            }
 
-	        $cmd->save();
-	    }
+            $cmd->save();
+        }
 
-	    log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Fin de création / réparation des commandes.');
-	}
+        log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Fin de création / réparation des commandes.');
+    }
+
     /* ============================================================
      *  RECEPTION DU DEMON (PUSH ETAT)
      * ============================================================ */
 
     public static function updateFromDaemon($spaId, $data) {
-        log::add(
-            'new_bestway_spa',
-            'debug',
-            '[updateFromDaemon] spaId=' . $spaId . ' / data=' . json_encode($data)
-        );
+        log::add('new_bestway_spa', 'debug', '[updateFromDaemon] spaId=' . $spaId . ' / data=' . json_encode($data));
 
         $eq = self::byLogicalId($spaId, 'new_bestway_spa');
         if (!is_object($eq)) {
-            log::add(
-                'new_bestway_spa',
-                'warning',
-                "[updateFromDaemon] Equipement introuvable pour spaId $spaId"
-            );
+            log::add('new_bestway_spa', 'warning', "[updateFromDaemon] Equipement introuvable pour spaId $spaId");
             return;
         }
 
         foreach ($data as $key => $value) {
-            log::add(
-                'new_bestway_spa',
-                'debug',
-                "[updateFromDaemon] MAJ cmd '$key' => " . json_encode($value)
-            );
 
-            // On ne met à jour que les commandes info
             $cmd = $eq->getCmd('info', $key);
             if (!is_object($cmd)) {
-                log::add(
-                    'new_bestway_spa',
-                    'warning',
-                    "[updateFromDaemon] Commande info '$key' inexistante, ignorée."
-                );
+                log::add('new_bestway_spa', 'warning', "[updateFromDaemon] Commande info '$key' inexistante, ignorée.");
                 continue;
             }
 
-            // Normalisation des valeurs selon le sous-type
             $subType = $cmd->getSubType();
             $val = $value;
 
-            // Booleans => 0/1
             if (is_bool($val)) {
                 $val = $val ? 1 : 0;
             }
 
-            // Pour les binary : tout ce qui est "truthy" => 1, sinon 0
             if ($subType == 'binary') {
                 if ($val === '' || $val === null) {
                     $val = 0;
@@ -351,7 +320,6 @@ class new_bestway_spa extends eqLogic {
                 }
             }
 
-            // Pour les numeric : cast en float
             if ($subType == 'numeric') {
                 if ($val === '' || $val === null) {
                     $val = 0;
@@ -359,11 +327,6 @@ class new_bestway_spa extends eqLogic {
                 $val = floatval($val);
             }
 
-            log::add(
-                'new_bestway_spa',
-                'debug',
-                "[updateFromDaemon] -> event(" . json_encode($val) . ') sur cmd ' . $key
-            );
             $cmd->event($val);
         }
     }
@@ -371,37 +334,24 @@ class new_bestway_spa extends eqLogic {
     public static function createOrUpdateSpa($spaId, $data) {
         log::add('new_bestway_spa', 'debug', '[createOrUpdateSpa] spaId=' . $spaId);
 
-        // On recherche l'équipement existant
         $eq = self::byLogicalId($spaId, 'new_bestway_spa');
-        $isNew = false;
 
         if (!is_object($eq)) {
-            log::add(
-                'new_bestway_spa',
-                'info',
-                "[createOrUpdateSpa] Création équipement '$spaId'"
-            );
+            log::add('new_bestway_spa', 'info', "[createOrUpdateSpa] Création équipement '$spaId'");
 
             $eq = new self();
             $eq->setLogicalId($spaId);
             $eq->setEqType_name('new_bestway_spa');
 
-            // Nom par défaut
             $eq->setName('Mon SPA');
             $eq->setIsEnable(1);
             $eq->setIsVisible(1);
             $eq->setConfiguration('spa_id', $spaId);
 
             $eq->save();
-            $isNew = true;
         }
 
-        // Création / réparation des commandes à chaque appel,
-        // pour être robuste aux modifications dans le panel.
-        log::add('new_bestway_spa', 'debug', '[createOrUpdateSpa] Création / réparation des commandes par défaut...');
         $eq->createDefaultCommands();
-
-        log::add('new_bestway_spa', 'debug', '[createOrUpdateSpa] Mise à jour des valeurs...');
         self::updateFromDaemon($spaId, $data);
     }
 }
@@ -415,11 +365,7 @@ class new_bestway_spaCmd extends cmd {
     public function execute($_options = array()) {
         $eq = $this->getEqLogic();
         if (!is_object($eq)) {
-            log::add(
-                'new_bestway_spa',
-                'error',
-                '[execute] Impossible de récupérer l\'équipement associé à la commande ' . $this->getLogicalId()
-            );
+            log::add('new_bestway_spa', 'error', '[execute] Impossible de récupérer l\'équipement associé à la commande ' . $this->getLogicalId());
             return;
         }
 
@@ -433,11 +379,6 @@ class new_bestway_spaCmd extends cmd {
         );
 
         $subType = $this->getSubType();
-        log::add(
-            'new_bestway_spa',
-            'debug',
-            '[execute] Commande ' . $this->getLogicalId() . ' / subtype=' . $subType . ' / options=' . json_encode($_options)
-        );
 
         if ($subType == 'select' && isset($_options['select'])) {
             $payload['value'] = $_options['select'];
@@ -447,9 +388,6 @@ class new_bestway_spaCmd extends cmd {
             $payload['value'] = $_options['color'];
         } elseif ($subType == 'message' && isset($_options['message'])) {
             $payload['value'] = $_options['message'];
-        } else {
-            // Pour les actions type "other" (toggle, on/off, etc.),
-            // on laisse value = null, le démon interprétera.
         }
 
         $url = network::getNetworkAccess('internal') . '/plugins/new_bestway_spa/core/php/new_bestway_spa.api.php';
@@ -457,12 +395,6 @@ class new_bestway_spaCmd extends cmd {
         $params = array(
             'apikey'  => jeedom::getApiKey('new_bestway_spa'),
             'payload' => json_encode($payload),
-        );
-
-        log::add(
-            'new_bestway_spa',
-            'debug',
-            '[execute] Envoi POST à ' . $url . ' avec payload=' . json_encode($payload)
         );
 
         $ch = curl_init();
@@ -474,17 +406,9 @@ class new_bestway_spaCmd extends cmd {
 
         if ($result === false) {
             $curlError = curl_error($ch);
-            log::add(
-                'new_bestway_spa',
-                'error',
-                '[execute] Erreur CURL vers API new_bestway_spa : ' . $curlError
-            );
+            log::add('new_bestway_spa', 'error', '[execute] Erreur CURL vers API new_bestway_spa : ' . $curlError);
         } else {
-            log::add(
-                'new_bestway_spa',
-                'debug',
-                '[execute] Réponse API : ' . $result
-            );
+            log::add('new_bestway_spa', 'debug', '[execute] Réponse API : ' . $result);
         }
 
         curl_close($ch);
