@@ -9,6 +9,36 @@ require_once dirname(__FILE__) . '/../../../../core/php/core.inc.php';
 
 class new_bestway_spa extends eqLogic {
 
+    const VENV_PYTHON = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
+
+    /* ============================================================
+     *  HELPERS LOG
+     * ============================================================ */
+
+    private static function dbg($msg) {
+        log::add('new_bestway_spa', 'debug', $msg);
+    }
+
+    private static function inf($msg) {
+        log::add('new_bestway_spa', 'info', $msg);
+    }
+
+    private static function wrn($msg) {
+        log::add('new_bestway_spa', 'warning', $msg);
+    }
+
+    private static function err($msg) {
+        log::add('new_bestway_spa', 'error', $msg);
+    }
+
+    private static function dbgArr($prefix, $arr) {
+        self::dbg($prefix . ' ' . json_encode($arr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private static function maskApiKeyInCmd($cmd) {
+        return preg_replace("/--apikey\s+'[^']*'/", "--apikey '***'", $cmd);
+    }
+
     /* ============================================================
      *  DEPENDANCES
      * ============================================================ */
@@ -16,16 +46,50 @@ class new_bestway_spa extends eqLogic {
     public static function dependancy_info() {
         $return = array();
         $return['log'] = 'new_bestway_spa_dep';
+        $return['progress_file'] = jeedom::getTmpFolder(__CLASS__) . '/dependency';
 
-        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
-        $return['state'] = file_exists($venvPy) ? 'ok' : 'nok';
+        self::dbg('[dependancy_info] start');
+        self::dbgArr('[dependancy_info] return init:', $return);
+
+        if (file_exists($return['progress_file'])) {
+            self::dbg('[dependancy_info] progress_file exists => in_progress: ' . $return['progress_file']);
+            $return['state'] = 'in_progress';
+            return $return;
+        }
+
+        self::dbg('[dependancy_info] progress_file not found: ' . $return['progress_file']);
+
+        if (!file_exists(self::VENV_PYTHON)) {
+            self::dbg('[dependancy_info] VENV_PYTHON missing: ' . self::VENV_PYTHON);
+            $return['state'] = 'nok';
+            return $return;
+        }
+
+        self::dbg('[dependancy_info] VENV_PYTHON found: ' . self::VENV_PYTHON);
+
+        $pyCheck = 'import requests; print(requests.__version__)';
+        $cmd = escapeshellcmd(self::VENV_PYTHON) . ' -c ' . escapeshellarg($pyCheck);
+        $output = array();
+        $rc = 0;
+
+        self::dbg('[dependancy_info] exec cmd: ' . $cmd);
+        @exec($cmd . ' 2>&1', $output, $rc);
+
+        self::dbg('[dependancy_info] exec rc=' . $rc);
+        self::dbgArr('[dependancy_info] exec output:', $output);
+
+        $return['state'] = ($rc === 0) ? 'ok' : 'nok';
+        self::dbg('[dependancy_info] state=' . $return['state']);
 
         return $return;
     }
 
     public static function dependancy_install() {
+        $script = dirname(__FILE__) . '/../../resources/install_#stype#.sh';
+        self::dbg('[dependancy_install] script=' . $script . ' log=new_bestway_spa_dep');
+
         return array(
-            'script' => 'bash ' . dirname(__FILE__) . '/../../resources/install_venv.sh',
+            'script' => $script,
             'log'    => 'new_bestway_spa_dep'
         );
     }
@@ -40,48 +104,63 @@ class new_bestway_spa extends eqLogic {
         $return['launchable'] = 'ok';
         $return['state'] = 'nok';
 
-        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
-        if (!file_exists($venvPy)) {
+        self::dbg('[deamon_info] start');
+
+        $dep = self::dependancy_info();
+        self::dbgArr('[deamon_info] dependancy_info:', $dep);
+
+        if (!isset($dep['state']) || $dep['state'] !== 'ok') {
             $return['launchable'] = 'nok';
+            self::dbg('[deamon_info] launchable=nok (dependencies not ok)');
             return $return;
         }
 
-        // Vérifie si un process du démon tourne
-        $pid = trim(shell_exec("pgrep -f 'new_bestway_spa_daemon.py' | head -n 1"));
+        // Anti “auto-match” pgrep/pkill : [n]ew_...
+        $pgrepCmd = "pgrep -f \"[n]ew_bestway_spa_daemon.py\" | head -n 1";
+        self::dbg('[deamon_info] pgrep cmd: ' . $pgrepCmd);
+        $pid = trim(shell_exec($pgrepCmd));
+        self::dbg('[deamon_info] pgrep result pid=' . ($pid !== '' ? $pid : '(none)'));
+
         if ($pid !== '') {
             $return['state'] = 'ok';
         }
 
+        self::dbgArr('[deamon_info] return:', $return);
         return $return;
     }
 
     public static function deamon_start() {
-        log::add('new_bestway_spa', 'info', '[deamon_start] Tentative de démarrage du démon...');
+        self::inf('[deamon_start] Tentative de démarrage du démon...');
+        self::dbg('[deamon_start] start');
 
-        // On arrête d’abord le démon existant le cas échéant
+        self::dbg('[deamon_start] calling deamon_stop() before start');
         self::deamon_stop();
 
-        $venvPy = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
-        if (!file_exists($venvPy)) {
-            throw new Exception("Venv introuvable: $venvPy. Installez d'abord les dépendances du plugin.");
+        $dep = self::dependancy_info();
+        self::dbgArr('[deamon_start] dependancy_info:', $dep);
+
+        if (!isset($dep['state']) || $dep['state'] !== 'ok') {
+            self::err('[deamon_start] dependencies not ok');
+            throw new Exception("Dépendances non installées. Lancez d'abord l'installation des dépendances (venv + requests).");
         }
 
-        // Paramètres SmartHub obligatoires
-        $required = array(
-            'visitor_id',
-            'registration_id',
-            'device_id',
-            'product_id',
-        );
+        if (!file_exists(self::VENV_PYTHON)) {
+            self::err('[deamon_start] Venv introuvable: ' . self::VENV_PYTHON);
+            throw new Exception("Venv introuvable: " . self::VENV_PYTHON);
+        }
 
+        $required = array('visitor_id', 'registration_id', 'device_id', 'product_id');
         foreach ($required as $key) {
             $value = config::byKey($key, 'new_bestway_spa');
+            self::dbg("[deamon_start] config $key=" . ($value === null ? '(null)' : (string)$value));
             if ($value === '' || $value === null) {
+                self::err("[deamon_start] Missing required config: $key");
                 throw new Exception("Paramètre obligatoire manquant ou vide : $key");
             }
         }
 
         $apikey = jeedom::getApiKey('new_bestway_spa');
+        self::dbg('[deamon_start] apikey length=' . strlen((string)$apikey) . ' (masked)');
 
         $ip = config::byKey('internalAddr');
         if ($ip == '' || $ip === null) {
@@ -99,13 +178,29 @@ class new_bestway_spa extends eqLogic {
         $location        = config::byKey('location', 'new_bestway_spa', 'GB');
         $timezone        = config::byKey('timezone', 'new_bestway_spa', 'GMT');
 
+        self::dbgArr('[deamon_start] params:', array(
+            'jeedom_ip' => $ip,
+            'refresh' => $refresh,
+            'api_host' => $api_host,
+            'visitor_id' => $visitor_id,
+            'client_id' => $client_id,
+            'registration_id' => $registration_id,
+            'device_id' => $device_id,
+            'product_id' => $product_id,
+            'push_type' => $push_type,
+            'location' => $location,
+            'timezone' => $timezone,
+        ));
+
         $daemonPath = realpath(dirname(__FILE__) . '/../../resources/new_bestway_spa_daemon.py');
+        self::dbg('[deamon_start] daemonPath realpath=' . ($daemonPath ? $daemonPath : '(false)'));
+
         if ($daemonPath === false || !file_exists($daemonPath)) {
+            self::err('[deamon_start] daemon script not found');
             throw new Exception("Script daemon introuvable : " . dirname(__FILE__) . '/../../resources/new_bestway_spa_daemon.py');
         }
 
-        // Construction de la commande de lancement
-        $cmd  = 'nohup ' . escapeshellcmd($venvPy) . ' ' . escapeshellarg($daemonPath);
+        $cmd  = 'nohup ' . escapeshellcmd(self::VENV_PYTHON) . ' ' . escapeshellarg($daemonPath);
         $cmd .= ' --apikey ' . escapeshellarg($apikey);
         $cmd .= ' --jeedom_ip ' . escapeshellarg($ip);
         $cmd .= ' --refresh ' . intval($refresh);
@@ -120,42 +215,55 @@ class new_bestway_spa extends eqLogic {
         $cmd .= ' --push_type ' . escapeshellarg($push_type);
         $cmd .= ' --location ' . escapeshellarg($location);
         $cmd .= ' --timezone ' . escapeshellarg($timezone);
-        $cmd .= ' >> ' . log::getPathToLog('new_bestway_spa') . ' 2>&1 &';
 
-        // Log “safe” (masque l'apikey)
-        $cmdSafe = str_replace(escapeshellarg($apikey), "'***'", $cmd);
-        log::add('new_bestway_spa', 'info', '[deamon_start] CMD LANCÉ : ' . $cmdSafe);
+        $daemonLog = log::getPathToLog('new_bestway_spa_daemon');
+        $cmd .= ' >> ' . $daemonLog . ' 2>&1 &';
 
-        exec($cmd);
+        self::inf('[deamon_start] CMD LANCÉ (masked) : ' . self::maskApiKeyInCmd($cmd));
+        self::dbg('[deamon_start] daemon log path=' . $daemonLog);
 
-        // On laisse un peu de temps au démon pour démarrer
-        sleep(1);
-        $info = self::deamon_info();
-        if ($info['state'] != 'ok') {
-            log::add('new_bestway_spa', 'warning', '[deamon_start] Le démon semble ne pas être démarré (state != ok). Vérifiez les logs.');
+        $output = array();
+        $rc = 0;
+        exec($cmd, $output, $rc);
+        self::dbg('[deamon_start] exec rc=' . $rc);
+        self::dbgArr('[deamon_start] exec output:', $output);
+
+        $i = 0;
+        while ($i < 10) {
+            $info = self::deamon_info();
+            self::dbgArr('[deamon_start] poll deamon_info:', $info);
+            if ($info['state'] === 'ok') {
+                self::inf('[deamon_start] Démon démarré.');
+                return true;
+            }
+            sleep(1);
+            $i++;
         }
 
-        return true;
+        self::err('[deamon_start] Le démon ne démarre pas. Vérifiez le log new_bestway_spa_daemon.');
+        return false;
     }
 
     public static function deamon_stop() {
-        log::add('new_bestway_spa', 'info', '[deamon_stop] Arrêt du démon...');
+        self::inf('[deamon_stop] Arrêt du démon...');
+        self::dbg('[deamon_stop] start');
 
-        $pidList = trim(shell_exec("pgrep -f 'new_bestway_spa_daemon.py'"));
-        if ($pidList === '') {
-            log::add('new_bestway_spa', 'debug', '[deamon_stop] Aucun PID détecté pour new_bestway_spa_daemon.py');
-            return;
-        }
+        // Anti “auto-match” : [n]ew_...
+        $cmd = "pkill -f \"[n]ew_bestway_spa_daemon.py\" 2>/dev/null";
+        self::dbg('[deamon_stop] exec: ' . $cmd);
 
-        $pids = explode("\n", $pidList);
-        foreach ($pids as $pid) {
-            $pid = trim($pid);
-            if ($pid === '') {
-                continue;
-            }
-            log::add('new_bestway_spa', 'info', '[deamon_stop] kill PID ' . $pid);
-            exec('kill ' . escapeshellarg($pid));
-        }
+        $output = array();
+        $rc = 0;
+        exec($cmd, $output, $rc);
+
+        self::dbg('[deamon_stop] rc=' . $rc . ' (0=killed, 1=not found)');
+        self::dbgArr('[deamon_stop] output:', $output);
+
+        usleep(200000);
+
+        // Vérification post-stop
+        $pid = trim(shell_exec("pgrep -f \"[n]ew_bestway_spa_daemon.py\" | head -n 1"));
+        self::dbg('[deamon_stop] post-check pid=' . ($pid !== '' ? $pid : '(none)'));
     }
 
     /* ============================================================
@@ -163,24 +271,24 @@ class new_bestway_spa extends eqLogic {
      * ============================================================ */
 
     public function postSave() {
-        log::add('new_bestway_spa', 'debug', '[postSave] Début pour eqLogic #' . $this->getId() . ' (' . $this->getName() . ')');
+        self::dbg('[postSave] Début eqLogic #' . $this->getId() . ' name=' . $this->getName() . ' eqType=' . $this->getEqType_name());
 
-        // On s'assure que l'equipement est bien du bon eqType
         if ($this->getEqType_name() != 'new_bestway_spa') {
-            log::add('new_bestway_spa', 'debug', '[postSave] Correction eqType_name => new_bestway_spa');
+            self::dbg('[postSave] Correction eqType_name => new_bestway_spa');
             $this->setEqType_name('new_bestway_spa');
             $this->save();
+            self::dbg('[postSave] eqType_name corrected + saved');
         }
 
-        // Auto-création / réparation des commandes
         try {
+            self::dbg('[postSave] calling createDefaultCommands()');
             $this->createDefaultCommands();
-            log::add('new_bestway_spa', 'debug', '[postSave] createDefaultCommands() exécuté avec succès.');
+            self::dbg('[postSave] createDefaultCommands() OK');
         } catch (Exception $e) {
-            log::add('new_bestway_spa', 'error', '[postSave] Erreur lors de createDefaultCommands : ' . $e->getMessage());
+            self::err('[postSave] Erreur createDefaultCommands : ' . $e->getMessage());
         }
 
-        log::add('new_bestway_spa', 'debug', '[postSave] Fin.');
+        self::dbg('[postSave] Fin.');
     }
 
     /* ============================================================
@@ -188,13 +296,11 @@ class new_bestway_spa extends eqLogic {
      * ============================================================ */
 
     public function createDefaultCommands() {
-        log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Création / réparation des commandes pour eqLogic #' . $this->getId());
+        self::dbg('[createDefaultCommands] start eqLogic #' . $this->getId());
 
-        // Liste des sous-types valides
         $validInfoSubTypes = array('string', 'numeric', 'binary');
         $validActionSubTypes = array('other', 'slider', 'color', 'message', 'select');
 
-        // --- COMMANDES INFO ---
         $infos = array(
             'wifi_version'        => array('Version WiFi',         'numeric', '',   0),
             'ota_status'          => array('Statut OTA',           'numeric', '',   0),
@@ -214,20 +320,28 @@ class new_bestway_spa extends eqLogic {
             'is_online'           => array('En ligne',             'binary',  '',   0),
         );
 
+        $createdInfo = 0;
+        $updatedInfo = 0;
+
         foreach ($infos as $logicalId => $config) {
             list($name, $subtype, $unit, $historize) = $config;
 
-            $cmd = $this->getCmd(null, $logicalId);
+            self::dbg("[createDefaultCommands] info loop logicalId=$logicalId name=$name subtype=$subtype unit=$unit historize=$historize");
 
+            $cmd = $this->getCmd(null, $logicalId);
             if (!is_object($cmd)) {
                 $cmd = new new_bestway_spaCmd();
                 $cmd->setEqLogic_id($this->getId());
                 $cmd->setLogicalId($logicalId);
-                log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Info '$logicalId' créée.");
+                $createdInfo++;
+                self::dbg("[createDefaultCommands] created info cmd logicalId=$logicalId");
+            } else {
+                $updatedInfo++;
+                self::dbg("[createDefaultCommands] found existing info cmd logicalId=$logicalId id=" . $cmd->getId());
             }
 
             if (!in_array($subtype, $validInfoSubTypes)) {
-                log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour info '$logicalId'. Défini par défaut à 'string'");
+                self::wrn("[createDefaultCommands] invalid info subType '$subtype' for '$logicalId' => fallback string");
                 $subtype = 'string';
             }
 
@@ -237,9 +351,10 @@ class new_bestway_spa extends eqLogic {
             $cmd->setIsHistorized($historize ? 1 : 0);
             $cmd->setUnite($unit != '' ? $unit : '');
             $cmd->save();
+
+            self::dbg("[createDefaultCommands] saved info cmd logicalId=$logicalId type=info subtype=$subtype historize=" . ($historize ? '1' : '0'));
         }
 
-        // --- COMMANDES ACTION ---
         $actions = array(
             'set_power'     => array('Alimentation ON/OFF', 'other',  ''),
             'set_heating'   => array('Activer chauffage',   'other',  ''),
@@ -248,20 +363,28 @@ class new_bestway_spa extends eqLogic {
             'bubble_mode'   => array('Mode bulles',         'select', '0|Off;1|L1;2|L2'),
         );
 
+        $createdAct = 0;
+        $updatedAct = 0;
+
         foreach ($actions as $logicalId => $config) {
             list($name, $subtype, $listValue) = $config;
 
-            $cmd = $this->getCmd(null, $logicalId);
+            self::dbg("[createDefaultCommands] action loop logicalId=$logicalId name=$name subtype=$subtype listValue=$listValue");
 
+            $cmd = $this->getCmd(null, $logicalId);
             if (!is_object($cmd)) {
                 $cmd = new new_bestway_spaCmd();
                 $cmd->setEqLogic_id($this->getId());
                 $cmd->setLogicalId($logicalId);
-                log::add('new_bestway_spa', 'debug', "[createDefaultCommands] Action '$logicalId' créée.");
+                $createdAct++;
+                self::dbg("[createDefaultCommands] created action cmd logicalId=$logicalId");
+            } else {
+                $updatedAct++;
+                self::dbg("[createDefaultCommands] found existing action cmd logicalId=$logicalId id=" . $cmd->getId());
             }
 
             if (!in_array($subtype, $validActionSubTypes)) {
-                log::add('new_bestway_spa', 'error', "[createDefaultCommands] subType '$subtype' invalide pour action '$logicalId'. Défini par défaut à 'other'");
+                self::wrn("[createDefaultCommands] invalid action subType '$subtype' for '$logicalId' => fallback other");
                 $subtype = 'other';
             }
 
@@ -276,9 +399,17 @@ class new_bestway_spa extends eqLogic {
             }
 
             $cmd->save();
+            self::dbg("[createDefaultCommands] saved action cmd logicalId=$logicalId subtype=$subtype");
         }
 
-        log::add('new_bestway_spa', 'debug', '[createDefaultCommands] Fin de création / réparation des commandes.');
+        self::dbgArr('[createDefaultCommands] summary:', array(
+            'info_created' => $createdInfo,
+            'info_updated' => $updatedInfo,
+            'action_created' => $createdAct,
+            'action_updated' => $updatedAct,
+        ));
+
+        self::dbg('[createDefaultCommands] end');
     }
 
     /* ============================================================
@@ -286,19 +417,21 @@ class new_bestway_spa extends eqLogic {
      * ============================================================ */
 
     public static function updateFromDaemon($spaId, $data) {
-        log::add('new_bestway_spa', 'debug', '[updateFromDaemon] spaId=' . $spaId . ' / data=' . json_encode($data));
+        self::dbg('[updateFromDaemon] start spaId=' . $spaId);
+        self::dbgArr('[updateFromDaemon] payload:', $data);
 
         $eq = self::byLogicalId($spaId, 'new_bestway_spa');
         if (!is_object($eq)) {
-            log::add('new_bestway_spa', 'warning', "[updateFromDaemon] Equipement introuvable pour spaId $spaId");
+            self::wrn("[updateFromDaemon] Equipement introuvable pour spaId $spaId");
             return;
         }
 
         foreach ($data as $key => $value) {
+            self::dbg("[updateFromDaemon] processing key=$key raw=" . json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
             $cmd = $eq->getCmd('info', $key);
             if (!is_object($cmd)) {
-                log::add('new_bestway_spa', 'warning', "[updateFromDaemon] Commande info '$key' inexistante, ignorée.");
+                self::wrn("[updateFromDaemon] Commande info '$key' inexistante, ignorée.");
                 continue;
             }
 
@@ -327,17 +460,20 @@ class new_bestway_spa extends eqLogic {
                 $val = floatval($val);
             }
 
+            self::dbg("[updateFromDaemon] cmd=" . $cmd->getLogicalId() . " subtype=$subType => event(" . json_encode($val) . ")");
             $cmd->event($val);
         }
+
+        self::dbg('[updateFromDaemon] end');
     }
 
     public static function createOrUpdateSpa($spaId, $data) {
-        log::add('new_bestway_spa', 'debug', '[createOrUpdateSpa] spaId=' . $spaId);
+        self::dbg('[createOrUpdateSpa] start spaId=' . $spaId);
+        self::dbgArr('[createOrUpdateSpa] data:', $data);
 
         $eq = self::byLogicalId($spaId, 'new_bestway_spa');
-
         if (!is_object($eq)) {
-            log::add('new_bestway_spa', 'info', "[createOrUpdateSpa] Création équipement '$spaId'");
+            self::inf("[createOrUpdateSpa] Création équipement '$spaId'");
 
             $eq = new self();
             $eq->setLogicalId($spaId);
@@ -349,10 +485,15 @@ class new_bestway_spa extends eqLogic {
             $eq->setConfiguration('spa_id', $spaId);
 
             $eq->save();
+            self::dbg("[createOrUpdateSpa] equipment created id=" . $eq->getId());
+        } else {
+            self::dbg("[createOrUpdateSpa] equipment exists id=" . $eq->getId());
         }
 
         $eq->createDefaultCommands();
         self::updateFromDaemon($spaId, $data);
+
+        self::dbg('[createOrUpdateSpa] end');
     }
 }
 
@@ -363,9 +504,12 @@ class new_bestway_spa extends eqLogic {
 class new_bestway_spaCmd extends cmd {
 
     public function execute($_options = array()) {
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] start logicalId=' . $this->getLogicalId());
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] options=' . json_encode($_options, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
         $eq = $this->getEqLogic();
         if (!is_object($eq)) {
-            log::add('new_bestway_spa', 'error', '[execute] Impossible de récupérer l\'équipement associé à la commande ' . $this->getLogicalId());
+            log::add('new_bestway_spa', 'error', '[cmd.execute] Impossible de récupérer l\'équipement associé à la commande ' . $this->getLogicalId());
             return;
         }
 
@@ -379,6 +523,7 @@ class new_bestway_spaCmd extends cmd {
         );
 
         $subType = $this->getSubType();
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] subType=' . $subType);
 
         if ($subType == 'select' && isset($_options['select'])) {
             $payload['value'] = $_options['select'];
@@ -390,6 +535,8 @@ class new_bestway_spaCmd extends cmd {
             $payload['value'] = $_options['message'];
         }
 
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] payload=' . json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
         $url = network::getNetworkAccess('internal') . '/plugins/new_bestway_spa/core/php/new_bestway_spa.api.php';
 
         $params = array(
@@ -397,21 +544,30 @@ class new_bestway_spaCmd extends cmd {
             'payload' => json_encode($payload),
         );
 
+        $paramsSafe = $params;
+        $paramsSafe['apikey'] = '***';
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] url=' . $url);
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] paramsSafe=' . json_encode($paramsSafe, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
         $result = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
         if ($result === false) {
             $curlError = curl_error($ch);
-            log::add('new_bestway_spa', 'error', '[execute] Erreur CURL vers API new_bestway_spa : ' . $curlError);
+            log::add('new_bestway_spa', 'error', '[cmd.execute] Erreur CURL vers API new_bestway_spa : ' . $curlError);
         } else {
-            log::add('new_bestway_spa', 'debug', '[execute] Réponse API : ' . $result);
+            log::add('new_bestway_spa', 'debug', '[cmd.execute] httpCode=' . $httpCode);
+            log::add('new_bestway_spa', 'debug', '[cmd.execute] response=' . $result);
         }
 
         curl_close($ch);
+        log::add('new_bestway_spa', 'debug', '[cmd.execute] end');
         return true;
     }
 }
