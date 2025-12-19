@@ -9,7 +9,7 @@ require_once dirname(__FILE__) . '/../../../../core/php/core.inc.php';
 
 class new_bestway_spa extends eqLogic {
 
-    const VENV_PYTHON = '/var/www/html/data/new_bestway_spa/venv/bin/python3';
+    const VENV_PYTHON = '/var/www/html/plugins/new_bestway_spa/resources/venv/bin/python3';
 
     /* ============================================================
      *  HELPERS LOG
@@ -85,15 +85,11 @@ class new_bestway_spa extends eqLogic {
     }
 
     public static function dependancy_install() {
-        $script = dirname(__FILE__) . '/../../resources/install_#stype#.sh';
-        self::dbg('[dependancy_install] script=' . $script . ' log=new_bestway_spa_dep');
-
         return array(
-            'script' => $script,
+            'script' => dirname(__FILE__) . '/../../resources/install_#stype#.sh',
             'log'    => 'new_bestway_spa_dep'
         );
     }
-
     /* ============================================================
      *  DEMON
      * ============================================================ */
